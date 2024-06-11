@@ -45,7 +45,7 @@ handleDisconnect();
 
 // In-memory storage for votes (for simplicity)
 let votes = {
-    "Raymond IGABINEZA": 0,
+    "Didier MUTABAZI": 0,
     "Florence UMUTONIWASE": 0,
     "Jean Paul KWIBUKA": 0,
     "Gaella UWAYO": 0,
@@ -68,7 +68,7 @@ app.post('/ussd', (req, res) => {
     // Determine next action based on user input
     if (userInput.length === 1 && userInput[0] === '') {
         // First level menu: Language selection
-        response = `CON Welcome to Mayor voting booth\n`;
+        response = `CON Guild Voting\n`;
         response += `1. English\n`;
         response += `2. Kinyarwanda`;
     } else if (userInput.length === 1 && userInput[0] !== '') {
@@ -87,8 +87,8 @@ app.post('/ussd', (req, res) => {
             } else {
                 // Voting option selected
                 response = userLanguages[phoneNumber] === 'en' ? 
-                    `CON Select a candidate:\n1. Raymond IGABINEZA\n2. Florence UMUTONIWASE\n3. Jean Paul KWIBUKA\n4. Gaella UWAYO\n5. Danny HABIMANA` : 
-                    `CON Hitamo umukandida:\n1. Raymond IGABINEZA\n2. Florence UMUTONIWASE\n3. Jean Paul KWIBUKA\n4. Gaella UWAYO\n5. Danny HABIMANA`;
+                    `CON Select a candidate:\n1. Didier MUTABAZI\n2. Florence UMUTONIWASE\n3. Jean Paul KWIBUKA\n4. Gaella UWAYO\n5. Danny HABIMANA` : 
+                    `CON Hitamo umukandida:\n1. Didier MUTABAZI\n2. Florence UMUTONIWASE\n3. Jean Paul KWIBUKA\n4. Gaella UWAYO\n5. Danny HABIMANA`;
             }
         } else if (userInput[1] === '2') {
             // View votes option selected
