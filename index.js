@@ -1,19 +1,11 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const mysql = require('mysql');
-const session = require('express-session');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(bodyParser.urlencoded({ extended: false }));
-
-// Use session middleware to store temporary session data
-app.use(session({
-    secret: 'your-secret-key',
-    resave: false,
-    saveUninitialized: true
-}));
 
 // Database connection details
 const dbConfig = {
@@ -54,12 +46,18 @@ handleDisconnect();
 // In-memory storage for user data (for simplicity)
 let voters = new Set(); // Set to track phone numbers that have already voted
 let userLanguages = {}; // Object to store the language preference of each user
+let sessionData = {}; // Object to store session data for each sessionId
 
 app.post('/ussd', (req, res) => {
     let response = '';
 
     // Extract USSD input
     const { sessionId, serviceCode, phoneNumber, text } = req.body;
+
+    // Initialize session data if it doesn't exist
+    if (!sessionData[sessionId]) {
+        sessionData[sessionId] = {};
+    }
 
     // Parse user input
     const userInput = text.split('*').map(option => option.trim());
@@ -102,8 +100,8 @@ app.post('/ussd', (req, res) => {
                                 response += `${index + 1}. ${candidate.candidate_name}\n`;
                             });
 
-                            // Store the fetched candidates in a temporary in-memory storage for the session
-                            req.session.candidates = results;
+                            // Store the fetched candidates in session data
+                            sessionData[sessionId].candidates = results;
                         } else {
                             response = userLanguages[phoneNumber] === 'en' ? 
                                 `END No candidates available.` : 
@@ -143,34 +141,40 @@ app.post('/ussd', (req, res) => {
         }
     } else if (userInput.length === 3) {
         // Voting confirmation
-        let candidateIndex = parseInt(userInput[2]) - 1;
-        let candidates = req.session.candidates;
-
-        if (candidateIndex >= 0 && candidateIndex < candidates.length) {
-            let selectedCandidate = candidates[candidateIndex];
-            voters.add(phoneNumber); // Mark this phone number as having voted
+        if (!sessionData[sessionId].candidates || sessionData[sessionId].candidates.length === 0) {
             response = userLanguages[phoneNumber] === 'en' ? 
-                `END Thank you for voting for ${selectedCandidate.candidate_name}!` : 
-                `END Murakoze gutora ${selectedCandidate.candidate_name}!`;
-
-            // Insert voting record into the database
-            const voteData = {
-                session_id: sessionId,
-                phone_number: phoneNumber,
-                language_used: userLanguages[phoneNumber],
-                voted_candidate: selectedCandidate.candidate_id
-            };
-
-            const query = 'INSERT INTO votes SET ?';
-            db.query(query, voteData, (err, result) => {
-                if (err) {
-                    console.error('Error inserting data into database:', err.stack);
-                }
-            });
+                `END No candidates available. Please start over.` : 
+                `END Nta mukandida uboneka. Ongera utangire.`;
         } else {
-            response = userLanguages[phoneNumber] === 'en' ? 
-                `END Invalid selection. Please try again.` : 
-                `END Hitamo idakwiye. Ongera mugerageze.`;
+            let candidateIndex = parseInt(userInput[2]) - 1;
+            let candidates = sessionData[sessionId].candidates;
+
+            if (candidateIndex >= 0 && candidateIndex < candidates.length) {
+                let selectedCandidate = candidates[candidateIndex];
+                voters.add(phoneNumber); // Mark this phone number as having voted
+                response = userLanguages[phoneNumber] === 'en' ? 
+                    `END Thank you for voting for ${selectedCandidate.candidate_name}!` : 
+                    `END Murakoze gutora ${selectedCandidate.candidate_name}!`;
+
+                // Insert voting record into the database
+                const voteData = {
+                    session_id: sessionId,
+                    phone_number: phoneNumber,
+                    language_used: userLanguages[phoneNumber],
+                    voted_candidate: selectedCandidate.candidate_id
+                };
+
+                const query = 'INSERT INTO votes SET ?';
+                db.query(query, voteData, (err, result) => {
+                    if (err) {
+                        console.error('Error inserting data into database:', err.stack);
+                    }
+                });
+            } else {
+                response = userLanguages[phoneNumber] === 'en' ? 
+                    `END Invalid selection. Please try again.` : 
+                    `END Hitamo idakwiye. Ongera mugerageze.`;
+            }
         }
     }
 
