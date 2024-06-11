@@ -121,7 +121,12 @@ app.post('/ussd', (req, res) => {
                 `END Amajwi:\n`;
 
             // Fetch vote counts from the database
-            db.query('SELECT candidates.candidate_name, COUNT(votes.voted_candidate) as votes FROM votes JOIN candidates ON votes.voted_candidate = candidates.candidate_id GROUP BY votes.voted_candidate', (err, results) => {
+            db.query(`
+                SELECT c.candidate_name, COUNT(v.voted_candidate) as votes
+                FROM votes v
+                JOIN candidates c ON v.voted_candidate = c.candidate_id
+                GROUP BY v.voted_candidate
+            `, (err, results) => {
                 if (err) {
                     console.error('Error fetching votes from database:', err.stack);
                     response += userLanguages[phoneNumber] === 'en' ? 
