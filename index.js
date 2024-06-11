@@ -1,11 +1,19 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const mysql = require('mysql');
+const session = require('express-session');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(bodyParser.urlencoded({ extended: false }));
+
+// Use session middleware to store temporary session data
+app.use(session({
+    secret: 'your-secret-key',
+    resave: false,
+    saveUninitialized: true
+}));
 
 // Database connection details
 const dbConfig = {
@@ -43,15 +51,6 @@ function handleDisconnect() {
 // Initial connection
 handleDisconnect();
 
-// In-memory storage for votes (for simplicity)
-let votes = {
-    "Didier MUTABAZI": 0,
-    "Florence UMUTONIWASE": 0,
-    "Jean Paul KWIBUKA": 0,
-    "Gaella UWAYO": 0,
-    "Danny HABIMANA": 0
-};
-
 // In-memory storage for user data (for simplicity)
 let voters = new Set(); // Set to track phone numbers that have already voted
 let userLanguages = {}; // Object to store the language preference of each user
@@ -85,37 +84,76 @@ app.post('/ussd', (req, res) => {
                     `END You have already voted. Thank you!` : 
                     `END Waratoye. Murakoze!`;
             } else {
-                // Voting option selected
-                response = userLanguages[phoneNumber] === 'en' ? 
-                    `CON Select a candidate:\n1. Didier MUTABAZI\n2. Florence UMUTONIWASE\n3. Jean Paul KWIBUKA\n4. Gaella UWAYO\n5. Danny HABIMANA` : 
-                    `CON Hitamo umukandida:\n1. Didier MUTABAZI\n2. Florence UMUTONIWASE\n3. Jean Paul KWIBUKA\n4. Gaella UWAYO\n5. Danny HABIMANA`;
+                // Fetch candidates from the database
+                db.query('SELECT id, name FROM candidates', (err, results) => {
+                    if (err) {
+                        console.error('Error fetching candidates from database:', err.stack);
+                        response = userLanguages[phoneNumber] === 'en' ? 
+                            `END Error fetching candidates. Please try again later.` : 
+                            `END Hari ikibazo cyo gufata amakandida. Ongera mugerageze nyuma.`;
+                        res.send(response);
+                    } else {
+                        if (results.length > 0) {
+                            response = userLanguages[phoneNumber] === 'en' ? 
+                                `CON Select a candidate:\n` : 
+                                `CON Hitamo umukandida:\n`;
+
+                            results.forEach((candidate, index) => {
+                                response += `${index + 1}. ${candidate.name}\n`;
+                            });
+
+                            // Store the fetched candidates in a temporary in-memory storage for the session
+                            req.session.candidates = results;
+                        } else {
+                            response = userLanguages[phoneNumber] === 'en' ? 
+                                `END No candidates available.` : 
+                                `END Nta mukandida uboneka.`;
+                        }
+                        res.send(response);
+                    }
+                });
+                return; // Return early to wait for database response
             }
         } else if (userInput[1] === '2') {
             // View votes option selected
             response = userLanguages[phoneNumber] === 'en' ? 
                 `END Votes:\n` : 
                 `END Amajwi:\n`;
-            for (let candidate in votes) {
-                response += `${candidate}: ${votes[candidate]} votes\n`;
-            }
+
+            // Fetch vote counts from the database
+            db.query('SELECT voted_candidate, COUNT(*) as votes FROM votes GROUP BY voted_candidate', (err, results) => {
+                if (err) {
+                    console.error('Error fetching votes from database:', err.stack);
+                    response += userLanguages[phoneNumber] === 'en' ? 
+                        `Error fetching votes. Please try again later.` : 
+                        `Hari ikibazo cyo gufata amajwi. Ongera mugerageze nyuma.`;
+                } else {
+                    results.forEach(row => {
+                        response += `${row.voted_candidate}: ${row.votes} votes\n`;
+                    });
+                }
+                res.send(response);
+            });
+            return; // Return early to wait for database response
         }
     } else if (userInput.length === 3) {
         // Voting confirmation
         let candidateIndex = parseInt(userInput[2]) - 1;
-        let candidateNames = Object.keys(votes);
-        if (candidateIndex >= 0 && candidateIndex < candidateNames.length) {
-            votes[candidateNames[candidateIndex]] += 1;
+        let candidates = req.session.candidates;
+
+        if (candidateIndex >= 0 && candidateIndex < candidates.length) {
+            let selectedCandidate = candidates[candidateIndex].name;
             voters.add(phoneNumber); // Mark this phone number as having voted
             response = userLanguages[phoneNumber] === 'en' ? 
-                `END Thank you for voting for ${candidateNames[candidateIndex]}!` : 
-                `END Murakoze gutora ${candidateNames[candidateIndex]}!`;
+                `END Thank you for voting for ${selectedCandidate}!` : 
+                `END Murakoze gutora ${selectedCandidate}!`;
 
             // Insert voting record into the database
             const voteData = {
                 session_id: sessionId,
                 phone_number: phoneNumber,
                 language_used: userLanguages[phoneNumber],
-                voted_candidate: candidateNames[candidateIndex]
+                voted_candidate: selectedCandidate
             };
 
             const query = 'INSERT INTO votes SET ?';
