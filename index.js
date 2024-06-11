@@ -85,7 +85,7 @@ app.post('/ussd', (req, res) => {
                     `END Waratoye. Murakoze!`;
             } else {
                 // Fetch candidates from the database
-                db.query('SELECT id, name FROM candidates', (err, results) => {
+                db.query('SELECT candidate_id, candidate_name FROM candidates', (err, results) => {
                     if (err) {
                         console.error('Error fetching candidates from database:', err.stack);
                         response = userLanguages[phoneNumber] === 'en' ? 
@@ -99,7 +99,7 @@ app.post('/ussd', (req, res) => {
                                 `CON Hitamo umukandida:\n`;
 
                             results.forEach((candidate, index) => {
-                                response += `${index + 1}. ${candidate.name}\n`;
+                                response += `${index + 1}. ${candidate.candidate_name}\n`;
                             });
 
                             // Store the fetched candidates in a temporary in-memory storage for the session
@@ -121,7 +121,7 @@ app.post('/ussd', (req, res) => {
                 `END Amajwi:\n`;
 
             // Fetch vote counts from the database
-            db.query('SELECT voted_candidate, COUNT(*) as votes FROM votes GROUP BY voted_candidate', (err, results) => {
+            db.query('SELECT candidates.candidate_name, COUNT(votes.voted_candidate) as votes FROM votes JOIN candidates ON votes.voted_candidate = candidates.candidate_id GROUP BY votes.voted_candidate', (err, results) => {
                 if (err) {
                     console.error('Error fetching votes from database:', err.stack);
                     response += userLanguages[phoneNumber] === 'en' ? 
@@ -129,7 +129,7 @@ app.post('/ussd', (req, res) => {
                         `Hari ikibazo cyo gufata amajwi. Ongera mugerageze nyuma.`;
                 } else {
                     results.forEach(row => {
-                        response += `${row.voted_candidate}: ${row.votes} votes\n`;
+                        response += `${row.candidate_name}: ${row.votes} votes\n`;
                     });
                 }
                 res.send(response);
@@ -142,18 +142,18 @@ app.post('/ussd', (req, res) => {
         let candidates = req.session.candidates;
 
         if (candidateIndex >= 0 && candidateIndex < candidates.length) {
-            let selectedCandidate = candidates[candidateIndex].name;
+            let selectedCandidate = candidates[candidateIndex];
             voters.add(phoneNumber); // Mark this phone number as having voted
             response = userLanguages[phoneNumber] === 'en' ? 
-                `END Thank you for voting for ${selectedCandidate}!` : 
-                `END Murakoze gutora ${selectedCandidate}!`;
+                `END Thank you for voting for ${selectedCandidate.candidate_name}!` : 
+                `END Murakoze gutora ${selectedCandidate.candidate_name}!`;
 
             // Insert voting record into the database
             const voteData = {
                 session_id: sessionId,
                 phone_number: phoneNumber,
                 language_used: userLanguages[phoneNumber],
-                voted_candidate: selectedCandidate
+                voted_candidate: selectedCandidate.candidate_id
             };
 
             const query = 'INSERT INTO votes SET ?';
